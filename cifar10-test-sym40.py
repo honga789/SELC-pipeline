@@ -711,7 +711,7 @@ if __name__ == '__main__':
         estimated_es_val, _ = estimate_es_m1(
             model=model, trainloader=trainloader, device=device, data_type=config["data_type"],
             max_scan_epochs=60, lr=scan_lr, optimizer_name=scan_op, weight_decay=1e-3,
-            momentum=0.9, random_state=config["seed"], patience=12, clone_model=True,
+            momentum=0.9, random_state=config["seed"], patience=None, clone_model=True,
             show_tqdm=True, normalize="minmax", use_amp=use_amp
         )
         # [ES] Áp dụng công thức Te = T - 10 từ paper
