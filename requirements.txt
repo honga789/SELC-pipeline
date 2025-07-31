@@ -1,0 +1,11 @@
+# requirements.txt
+numpy
+pandas
+Pillow
+tqdm
+torch
+torchvision
+scikit-learn
+transformers
+pyarrow
+notebook
