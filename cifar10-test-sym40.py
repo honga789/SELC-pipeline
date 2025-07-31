@@ -648,7 +648,7 @@ if __name__ == '__main__':
         "image_dir": "./Data/Cifar10-test/images",
         "data_type": "image",      # 'image' hoặc 'text'
         "batch_size": 128,         # Mặc định từ src gốc
-        "num_workers": 4,          # Tham số num_workers
+        "num_workers": 8,          # Tham số num_workers
         "num_epochs": 200,         # Mặc định từ src gốc
         "es": None,                  # Đặt None để tự động ước tính, hoặc điền số nguyên (vd: 40)
         "alpha": 0.9,              # Mặc định từ src gốc
