@@ -650,7 +650,7 @@ if __name__ == '__main__':
         "batch_size": 128,         # Mặc định từ src gốc
         "num_workers": 8,          # Tham số num_workers
         "num_epochs": 200,         # Mặc định từ src gốc
-        "es": 49,                  # Đặt None để tự động ước tính, hoặc điền số nguyên (vd: 40)
+        "es": 22,                  # Đặt None để tự động ước tính, hoặc điền số nguyên (vd: 40)
         "alpha": 0.9,              # Mặc định từ src gốc
         "log_interval": 30,
         "seed": 42,
