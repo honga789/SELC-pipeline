@@ -653,9 +653,11 @@ if __name__ == '__main__':
     parser.add_argument('--data_type', type=str, default='image', choices=['image', 'text'], help="Type of data ('image' or 'text').")
     parser.add_argument('--batch_size', type=int, default=128, help='Input batch size for training.')
     parser.add_argument('--num_workers', type=int, default=8, help='Number of workers for data loading.')
+    parser.add_argument('--image_size', type=int, default=224, help='Size to resize images to (e.g., 224).')
     parser.add_argument('--num_epochs', type=int, default=200, help='Number of epochs to train.')
     parser.add_argument('--es', type=int, default=None, help='Turning point epoch (Te). If set to None in code, it will be estimated automatically.')
     parser.add_argument('--patience', type=int, default=None, help='Patience for turning point estimation. If set None will run to 60')
+    parser.add_argument('--normalize_es', type=str, default='none', choices=['minmax', 'none'], help="Normalization method for turning point estimation.")
     parser.add_argument('--alpha', type=float, default=0.9, help='Alpha parameter for SELC loss.')
     parser.add_argument('--log_interval', type=int, default=100, help='How many batches to wait before logging training status.')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility.')
@@ -691,7 +693,8 @@ if __name__ == '__main__':
         data_column=config["data_column"], label_column=config["label_column"],
         image_dir=config["image_dir"], data_type=config["data_type"],
         batch_size=config["batch_size"],
-        num_workers=config["num_workers"]
+        num_workers=config["num_workers"],
+        image_size=config["image_size"]
     )
     trainloader, noisy_labels, clean_labels = loader.run()
     num_classes = int(np.max(clean_labels)) + 1
@@ -719,7 +722,7 @@ if __name__ == '__main__':
             model=model, trainloader=trainloader, device=device, data_type=config["data_type"],
             max_scan_epochs=60, lr=scan_lr, optimizer_name=scan_op, weight_decay=1e-3,
             momentum=0.9, random_state=config["seed"], patience=config["patience"], clone_model=True,
-            show_tqdm=True, normalize="minmax", use_amp=use_amp
+            show_tqdm=True, normalize=config["normalize_es"], use_amp=use_amp
         )
         # [ES] Áp dụng công thức Te = T - 10 từ paper
         es = max(1, estimated_es_val - 10)
