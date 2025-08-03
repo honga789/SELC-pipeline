@@ -719,7 +719,7 @@ if __name__ == '__main__':
             model=model, trainloader=trainloader, device=device, data_type=config["data_type"],
             max_scan_epochs=60, lr=scan_lr, optimizer_name=scan_op, weight_decay=1e-3,
             momentum=0.9, random_state=config["seed"], patience=config["patience"], clone_model=True,
-            show_tqdm=True, normalize="none", use_amp=use_amp
+            show_tqdm=True, normalize="minmax", use_amp=use_amp
         )
         # [ES] Áp dụng công thức Te = T - 10 từ paper
         es = max(1, estimated_es_val - 10)
