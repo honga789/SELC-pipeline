@@ -1,3 +1,6 @@
 venv/
 .vscode/
-data/
+data/Cifar10-test/cifar10-test-clip-b16-noise
+data/Cifar10-train/cifar10-train-clip-b16-noise
+*.tar
+*.gz
