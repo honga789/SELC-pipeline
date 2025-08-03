@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 import copy
@@ -31,7 +31,7 @@ from sklearn.mixture import GaussianMixture
 from transformers import BertModel, get_linear_schedule_with_warmup
 
 
-# In[2]:
+# In[ ]:
 
 
 # --- CẤU HÌNH LOGGING ---
@@ -45,7 +45,7 @@ logging.basicConfig(
 )
 
 
-# In[3]:
+# In[ ]:
 
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -55,7 +55,7 @@ IMAGENET_STD  = (0.229, 0.224, 0.225)
 class _TrainDataset(Dataset):
     """
     Dataset train chung cho image/text.
-    - Image: trả Tensor (C,H,W) sau Resize & Normalize (ImageNet).
+    - Image: trả Tensor (C,H,W) sau Resize & Augmentation & Normalize (ImageNet).
     - Text: trả string thô; tokenize ở collate_fn để padding theo batch.
     Trả về: (x, y_noisy, index)
     """
@@ -79,8 +79,11 @@ class _TrainDataset(Dataset):
         if self.data_type == "image":
             if not self.image_dir:
                 raise ValueError("image_dir là bắt buộc khi data_type='image'.")
+            padding_size = int(self.image_size * 0.125) # giống ví dụ (4/32)
             self.transform = T.Compose([
-                T.Resize((self.image_size, self.image_size)),  # không augmentation, chỉ resize cố định
+                T.Resize((self.image_size, self.image_size)),
+                T.RandomCrop(self.image_size, padding=padding_size),
+                T.RandomHorizontalFlip(),
                 T.ToTensor(),
                 T.Normalize(IMAGENET_MEAN, IMAGENET_STD),
             ])
@@ -218,7 +221,7 @@ class TrainDataLoader:
         return self.trainloader, self.noisy_labels, self.clean_labels
 
 
-# In[4]:
+# In[ ]:
 
 
 '''ResNet in PyTorch.
@@ -397,7 +400,7 @@ def ResNet34(num_classes):
     return ResNet(BasicBlock, [3, 4, 6, 3], num_classes=num_classes)
 
 
-# In[5]:
+# In[ ]:
 
 
 class BertTextClassifier(nn.Module):
@@ -449,7 +452,7 @@ class BertTextClassifier(nn.Module):
         return logits, feat, out_c
 
 
-# In[6]:
+# In[ ]:
 
 
 # ----- helper: per-sample losses -----
@@ -608,7 +611,7 @@ def estimate_es_m1(
     return best_epoch, hist_m1
 
 
-# In[7]:
+# In[ ]:
 
 
 # ----- Lớp Loss của SELC (Giữ nguyên logic gốc) -----
@@ -716,7 +719,7 @@ if __name__ == '__main__':
             model=model, trainloader=trainloader, device=device, data_type=config["data_type"],
             max_scan_epochs=60, lr=scan_lr, optimizer_name=scan_op, weight_decay=1e-3,
             momentum=0.9, random_state=config["seed"], patience=config["patience"], clone_model=True,
-            show_tqdm=True, normalize="minmax", use_amp=use_amp
+            show_tqdm=True, normalize="none", use_amp=use_amp
         )
         # [ES] Áp dụng công thức Te = T - 10 từ paper
         es = max(1, estimated_es_val - 10)
