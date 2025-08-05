@@ -28,7 +28,7 @@ import torchvision.transforms as T
 
 from sklearn.mixture import GaussianMixture
 
-from transformers import BertModel, get_linear_schedule_with_warmup
+from transformers import BertTokenizerFast, BertModel, get_linear_schedule_with_warmup
 
 
 # In[ ]:
@@ -112,32 +112,33 @@ class _TrainDataset(Dataset):
         y = int(self.noisy_labels[idx])  # nhãn nhiễu để train (đã là 0..C-1 theo yêu cầu)
         return x, torch.tensor(y, dtype=torch.long), idx
 
-
-def _make_text_collate_fn(max_length: int = 512, pretrained_name: str = "bert-base-uncased"):
+class _TextCollator:
     """
-    Collate cho text: tokenize theo batch -> dict tensors (input_ids, attention_mask, token_type_ids).
-    Trả về: (inputs_dict, labels, indices)
+    Collate cho text: tokenize theo batch -> dict tensors.
+    Class này có thể được pickle bởi multiprocessing, giải quyết lỗi trên Windows.
     """
-    from transformers import BertTokenizerFast
-    tokenizer = BertTokenizerFast.from_pretrained(pretrained_name)
+    def __init__(self, max_length: int = 512, pretrained_name: str = "bert-base-uncased"):
+        self.tokenizer = BertTokenizerFast.from_pretrained(pretrained_name)
+        self.max_length = max_length
 
-    def collate(batch: List[Tuple[str, torch.Tensor, int]]):
+    def __call__(self, batch: List[Tuple[str, torch.Tensor, int]]):
         texts = [b[0] for b in batch]
         labels = torch.stack([b[1] for b in batch], dim=0)
         indices = torch.tensor([b[2] for b in batch], dtype=torch.long)
-        tokenized = tokenizer(
+
+        tokenized = self.tokenizer(
             texts,
             padding=True,
             truncation=True,
-            max_length=max_length,
+            max_length=self.max_length,
             return_tensors="pt",
         )
+
         # đảm bảo có token_type_ids (BERT sử dụng)
         if "token_type_ids" not in tokenized:
             tokenized["token_type_ids"] = torch.zeros_like(tokenized["input_ids"])
-        return dict(tokenized), labels, indices
 
-    return collate
+        return dict(tokenized), labels, indices
 
 
 class TrainDataLoader:
@@ -203,7 +204,12 @@ class TrainDataLoader:
         )
 
         # Collate cho text
-        collate = _make_text_collate_fn(max_length=self.text_max_length) if self.data_type == "text" else None
+        if self.data_type == "text":
+            # Tạo một instance (đối tượng) từ class TextCollator
+            collate = _TextCollator(max_length=self.text_max_length) 
+        else:
+            # Giữ nguyên cho trường hợp data_type='image'
+            collate = None
 
         pin_mem = torch.cuda.is_available()
         self.trainloader = DataLoader(
