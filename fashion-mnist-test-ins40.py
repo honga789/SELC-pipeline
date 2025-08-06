@@ -603,15 +603,14 @@ def estimate_es_m1(
         logging.info(f"[Scan][Epoch {epoch}] M1={m1:.6f}")
         epoch_iter.set_postfix_str(f"M1={m1:.6f}")
 
-        if epoch > 1:
-            if m1 > best_m1:
-                best_m1, best_epoch, no_imp = m1, epoch, 0
-            else:
-                no_imp += 1
-                if patience is not None and no_imp >= patience:
-                    logging.info("Early stop triggered!")
-                    epoch_iter.set_postfix_str(f"M1={m1:.6f} (early stop)")
-                    break
+        if m1 > best_m1:
+            best_m1, best_epoch, no_imp = m1, epoch, 0
+        else:
+            no_imp += 1
+            if patience is not None and no_imp >= patience:
+                logging.info("Early stop triggered!")
+                epoch_iter.set_postfix_str(f"M1={m1:.6f} (early stop)")
+                break
 
     logging.info(f"=> estimated_es (M1) = {best_epoch}")
     return best_epoch, hist_m1
