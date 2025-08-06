@@ -662,7 +662,7 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=224, help='Size to resize images to (e.g., 224).')
     parser.add_argument('--num_epochs', type=int, default=200, help='Number of epochs to train.')
     parser.add_argument('--es', type=int, default=None, help='Turning point epoch (Te). If set to None in code, it will be estimated automatically.')
-    parser.add_argument('--patience', type=int, default=20, help='Patience for turning point estimation. If set None will run to 60')
+    parser.add_argument('--patience', type=int, default=12, help='Patience for turning point estimation. If set None will run to 60')
     parser.add_argument('--normalize_es', type=str, default='minmax', choices=['minmax', 'none'], help="Normalization method for turning point estimation.")
     parser.add_argument('--alpha', type=float, default=0.9, help='Alpha parameter for SELC loss.')
     parser.add_argument('--log_interval', type=int, default=100, help='How many batches to wait before logging training status.')
