@@ -667,6 +667,7 @@ if __name__ == '__main__':
     parser.add_argument('--log_interval', type=int, default=50, help='How many batches to wait before logging training status.')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility.')
     parser.add_argument('--max_duration_seconds', type=int, default=None, help='Maximum execution time in seconds. No limit if None.')
+    parser.add_argument('--use_amp', action='store_true', help='Enable Automatic Mixed Precision (AMP) if a GPU is available.')
 
     args = parser.parse_args()
     config = vars(args)
@@ -690,7 +691,7 @@ if __name__ == '__main__':
         torch.backends.cudnn.benchmark = False
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    use_amp = torch.cuda.is_available()
+    use_amp = config['use_amp'] and torch.cuda.is_available()
 
     # ----- Tải dữ liệu -----
     loader = TrainDataLoader(
