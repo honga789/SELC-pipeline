@@ -693,6 +693,12 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     use_amp = config['use_amp'] and torch.cuda.is_available()
 
+    if config['use_amp'] and not torch.cuda.is_available():
+        logging.warning("--> Warning: AMP was requested (--use_amp) but CUDA is not available. AMP will be DISABLED.")
+
+    status_str = "ENABLED" if use_amp else "DISABLED"
+    logging.info(f"*** Automatic Mixed Precision (AMP) Status: [ {status_str} ] ***")
+
     # ----- Tải dữ liệu -----
     loader = TrainDataLoader(
         csv_path=config["csv_path"], feather_path=config["feather_path"],
