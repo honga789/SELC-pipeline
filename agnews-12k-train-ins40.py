@@ -9,6 +9,7 @@ import os
 import random
 import time
 import logging
+import argparse
 from typing import Literal, Optional, Tuple, List
 
 import numpy as np
@@ -27,7 +28,7 @@ import torchvision.transforms as T
 
 from sklearn.mixture import GaussianMixture
 
-from transformers import BertModel, get_linear_schedule_with_warmup
+from transformers import BertTokenizerFast, BertModel, get_linear_schedule_with_warmup
 
 
 # In[ ]:
@@ -54,7 +55,7 @@ IMAGENET_STD  = (0.229, 0.224, 0.225)
 class _TrainDataset(Dataset):
     """
     Dataset train chung cho image/text.
-    - Image: trả Tensor (C,H,W) sau Resize & Normalize (ImageNet).
+    - Image: trả Tensor (C,H,W) sau Resize & Augmentation & Normalize (ImageNet).
     - Text: trả string thô; tokenize ở collate_fn để padding theo batch.
     Trả về: (x, y_noisy, index)
     """
@@ -78,8 +79,11 @@ class _TrainDataset(Dataset):
         if self.data_type == "image":
             if not self.image_dir:
                 raise ValueError("image_dir là bắt buộc khi data_type='image'.")
+            padding_size = int(self.image_size * 0.125) # giống ví dụ (4/32)
             self.transform = T.Compose([
-                T.Resize((self.image_size, self.image_size)),  # không augmentation, chỉ resize cố định
+                T.Resize((self.image_size, self.image_size)),
+                T.RandomCrop(self.image_size, padding=padding_size),
+                T.RandomHorizontalFlip(),
                 T.ToTensor(),
                 T.Normalize(IMAGENET_MEAN, IMAGENET_STD),
             ])
@@ -108,32 +112,32 @@ class _TrainDataset(Dataset):
         y = int(self.noisy_labels[idx])  # nhãn nhiễu để train (đã là 0..C-1 theo yêu cầu)
         return x, torch.tensor(y, dtype=torch.long), idx
 
-
-def _make_text_collate_fn(max_length: int = 512, pretrained_name: str = "bert-base-uncased"):
+class _TextCollator:
     """
-    Collate cho text: tokenize theo batch -> dict tensors (input_ids, attention_mask, token_type_ids).
-    Trả về: (inputs_dict, labels, indices)
+    Collate cho text: tokenize theo batch -> dict tensors.
     """
-    from transformers import BertTokenizerFast
-    tokenizer = BertTokenizerFast.from_pretrained(pretrained_name)
+    def __init__(self, max_length: int = 512, pretrained_name: str = "bert-base-uncased"):
+        self.tokenizer = BertTokenizerFast.from_pretrained(pretrained_name)
+        self.max_length = max_length
 
-    def collate(batch: List[Tuple[str, torch.Tensor, int]]):
+    def __call__(self, batch: List[Tuple[str, torch.Tensor, int]]):
         texts = [b[0] for b in batch]
         labels = torch.stack([b[1] for b in batch], dim=0)
         indices = torch.tensor([b[2] for b in batch], dtype=torch.long)
-        tokenized = tokenizer(
+
+        tokenized = self.tokenizer(
             texts,
             padding=True,
             truncation=True,
-            max_length=max_length,
+            max_length=self.max_length,
             return_tensors="pt",
         )
+
         # đảm bảo có token_type_ids (BERT sử dụng)
         if "token_type_ids" not in tokenized:
             tokenized["token_type_ids"] = torch.zeros_like(tokenized["input_ids"])
-        return dict(tokenized), labels, indices
 
-    return collate
+        return dict(tokenized), labels, indices
 
 
 class TrainDataLoader:
@@ -199,7 +203,12 @@ class TrainDataLoader:
         )
 
         # Collate cho text
-        collate = _make_text_collate_fn(max_length=self.text_max_length) if self.data_type == "text" else None
+        if self.data_type == "text":
+            # Tạo một instance (đối tượng) từ class TextCollator
+            collate = _TextCollator(max_length=self.text_max_length) 
+        else:
+            # Giữ nguyên cho trường hợp data_type='image'
+            collate = None
 
         pin_mem = torch.cuda.is_available()
         self.trainloader = DataLoader(
@@ -594,14 +603,15 @@ def estimate_es_m1(
         logging.info(f"[Scan][Epoch {epoch}] M1={m1:.6f}")
         epoch_iter.set_postfix_str(f"M1={m1:.6f}")
 
-        if m1 > best_m1:
-            best_m1, best_epoch, no_imp = m1, epoch, 0
-        else:
-            no_imp += 1
-            if patience is not None and no_imp >= patience:
-                logging.info("Early stop triggered!")
-                epoch_iter.set_postfix_str(f"M1={m1:.6f} (early stop)")
-                break
+        if epoch > 1:
+            if m1 > best_m1:
+                best_m1, best_epoch, no_imp = m1, epoch, 0
+            else:
+                no_imp += 1
+                if patience is not None and no_imp >= patience:
+                    logging.info("Early stop triggered!")
+                    epoch_iter.set_postfix_str(f"M1={m1:.6f} (early stop)")
+                    break
 
     logging.info(f"=> estimated_es (M1) = {best_epoch}")
     return best_epoch, hist_m1
@@ -638,24 +648,29 @@ class SELCLoss(nn.Module):
 
 
 if __name__ == '__main__':
-    # [CONFIG] Thay đổi các giá trị trong dict này để chạy với dataset khác
-    config = {
-        "dataset_name": "CIFAR-10_sym40",
-        "csv_path": "./Data/Cifar10-test/Cifar10-test.csv",
-        "feather_path": "./Data/Cifar10-test/cifar10-test-clip-b16-noise/cifar10-test_sym40.feather",
-        "data_column": "image_name",
-        "label_column": "label",
-        "image_dir": "./Data/Cifar10-test/images",
-        "data_type": "image",      # 'image' hoặc 'text'
-        "batch_size": 128,         # Mặc định từ src gốc
-        "num_workers": 8,          # Tham số num_workers
-        "num_epochs": 200,         # Mặc định từ src gốc
-        "es": 22,                  # Đặt None để tự động ước tính, hoặc điền số nguyên (vd: 40)
-        "alpha": 0.9,              # Mặc định từ src gốc
-        "log_interval": 30,
-        "seed": 42,
-        "max_duration_seconds": None # Thời gian tối đa thực thi, đặt None nếu không giới hạn
-    }
+    # ----- Thiết lập Argument Parser -----
+    parser = argparse.ArgumentParser(description='Train model with SELC using command-line arguments.')
+    parser.add_argument('--dataset_name', type=str, default="Agnews-12k-train-ins40", help='Name of the dataset.')
+    parser.add_argument('--csv_path', type=str, default="./Data/Agnews-12k-train/ag_news_12k.csv", help='Path to the CSV file.')
+    parser.add_argument('--feather_path', type=str, default="./Data/Agnews-12k-train/agnews-12k-train-bert-noise/agnews-12k-train_ins40.feather", help='Path to the feather file.')
+    parser.add_argument('--data_column', type=str, default="text", help='Column name for data identifiers.')
+    parser.add_argument('--label_column', type=str, default="label", help='Column name for labels.')
+    parser.add_argument('--image_dir', type=str, default=None, help='Directory containing images.')
+    parser.add_argument('--data_type', type=str, default='text', choices=['image', 'text'], help="Type of data ('image' or 'text').")
+    parser.add_argument('--batch_size', type=int, default=128, help='Input batch size for training.')
+    parser.add_argument('--num_workers', type=int, default=8, help='Number of workers for data loading.')
+    parser.add_argument('--image_size', type=int, default=224, help='Size to resize images to (e.g., 224).')
+    parser.add_argument('--num_epochs', type=int, default=200, help='Number of epochs to train.')
+    parser.add_argument('--es', type=int, default=None, help='Turning point epoch (Te). If set to None in code, it will be estimated automatically.')
+    parser.add_argument('--patience', type=int, default=12, help='Patience for turning point estimation. If set None will run to 60')
+    parser.add_argument('--normalize_es', type=str, default='minmax', choices=['minmax', 'none'], help="Normalization method for turning point estimation.")
+    parser.add_argument('--alpha', type=float, default=0.9, help='Alpha parameter for SELC loss.')
+    parser.add_argument('--log_interval', type=int, default=50, help='How many batches to wait before logging training status.')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility.')
+    parser.add_argument('--max_duration_seconds', type=int, default=None, help='Maximum execution time in seconds. No limit if None.')
+
+    args = parser.parse_args()
+    config = vars(args)
 
     # ----- Tự động thiết lập siêu tham số -----
     if config["data_type"] == 'image':
@@ -684,7 +699,8 @@ if __name__ == '__main__':
         data_column=config["data_column"], label_column=config["label_column"],
         image_dir=config["image_dir"], data_type=config["data_type"],
         batch_size=config["batch_size"],
-        num_workers=config["num_workers"]
+        num_workers=config["num_workers"],
+        image_size=config["image_size"]
     )
     trainloader, noisy_labels, clean_labels = loader.run()
     num_classes = int(np.max(clean_labels)) + 1
@@ -711,12 +727,12 @@ if __name__ == '__main__':
         estimated_es_val, _ = estimate_es_m1(
             model=model, trainloader=trainloader, device=device, data_type=config["data_type"],
             max_scan_epochs=60, lr=scan_lr, optimizer_name=scan_op, weight_decay=1e-3,
-            momentum=0.9, random_state=config["seed"], patience=12, clone_model=True,
-            show_tqdm=True, normalize="minmax", use_amp=use_amp
+            momentum=0.9, random_state=config["seed"], patience=config["patience"], clone_model=True,
+            show_tqdm=True, normalize=config["normalize_es"], use_amp=use_amp
         )
         # [ES] Áp dụng công thức Te = T - 10 từ paper
-        es = max(1, estimated_es_val - 10)
-        # es = estimated_es_val
+        # es = max(1, estimated_es_val - 10)
+        es = estimated_es_val
         logging.info(f"Automatic estimation finished. Using es = {es} (T={estimated_es_val} - 10)")
     else:
         logging.info(f"Using predefined es = {es}")
